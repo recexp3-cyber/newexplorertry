@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Chain Wallet Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .loader { border-top-color: #3498db; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <div class='h-20 w-20 mx-auto mb-6 bg-gray-700 rounded-full flex items-center justify-center'><p class='text-gray-500 font-bold text-lg'>Logo</p></div>
+
+        <div class="bg-gray-800 shadow-lg rounded-xl p-6 md:p-8">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-100">Multi-Chain Wallet Explorer</h1>
+                <p class="text-gray-400 mt-2">Check balances and transactions from Ethereum and BSC.</p>
+            </div>
+
+            <form id="explorer-form" class="flex flex-col sm:flex-row items-center gap-3 mb-6">
+                <input id="wallet-address" type="text" placeholder="Enter wallet address (e.g., 0x...)" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                <button type="submit" class="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
+                    Search
+                </button>
+            </form>
+
+            <div id="loader" class="hidden flex items-center justify-center my-4">
+                <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-500 h-12 w-12"></div>
+                <p class="ml-4 text-gray-300">Fetching data...</p>
+            </div>
+            <div id="error-message" class="hidden text-center bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg my-4"></div>
+
+            <div id="results" class="hidden space-y-6">
+                <div class="bg-gray-900/50 p-6 rounded-lg space-y-4">
+                    <div class="border border-gray-700 rounded-lg p-4">
+                        <div class="flex items-center border-b border-gray-600 pb-3 mb-4"><img src="https://ethereum.org/static/a183661dd70e0e5c70689a0ec95ef0ba/13c43/eth-glyph-colored.png" alt="ETH" class="h-8 w-8 mr-3" onerror="this.style.display='none'"><h2 class="text-xl font-semibold">Ethereum Network (ERC-20)</h2></div>
+                        <div class="space-y-4 text-lg">
+                            <div class="flex items-center justify-between"><p class="text-gray-300">ETH Balance:</p><p id="eth-balance" class="font-semibold"></p></div>
+                            <div class="flex items-center justify-between"><p class="text-gray-300">USDT Balance:</p><p id="usdt-balance" class="font-semibold"></p></div>
+                            <div class="flex items-center justify-between"><p class="text-gray-300">Token Balance:</p><p id="erc20-token-balance" class="font-semibold"></p></div>
+                        </div>
+                    </div>
+                    <div class="border border-gray-700 rounded-lg p-4">
+                        <div class="flex items-center border-b border-gray-600 pb-3 mb-4"><img src="https://cryptologos.cc/logos/bnb-bnb-logo.png?v=024" alt="BSC" class="h-8 w-8 mr-3" onerror="this.style.display='none'"><h2 class="text-xl font-semibold">Binance Smart Chain (BEP-20)</h2></div>
+                        <div class="space-y-4 text-lg">
+                            <div class="flex items-center justify-between"><p class="text-gray-300">USDT Balance:</p><p id="bep20-token-balance" class="font-semibold"></p></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-6">
+                    <div class="bg-gray-900/50 p-6 rounded-lg">
+                        <h2 class="text-2xl font-bold text-center mb-6">Ethereum Recent Transactions</h2>
+                        <div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-gray-700 text-gray-400"><th>Hash</th><th>Direction</th><th>Value / Token</th><th>Date</th></tr></thead><tbody id="eth-transactions-table-body"></tbody></table></div>
+                    </div>
+                    <div class="bg-gray-900/50 p-6 rounded-lg">
+                        <h2 class="text-2xl font-bold text-center mb-6">BSC Recent Transactions</h2>
+                        <div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-gray-700 text-gray-400"><th>Hash</th><th>Direction</th><th>Value / Token</th><th>Date</th></tr></thead><tbody id="bsc-transactions-table-body"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <footer class="text-center mt-6 text-gray-500 text-sm"><p>Powered by Web3.js and dedicated RPC endpoints.</p></footer>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const INFURA_API_KEY = '5c6eb8d8c9494ce9b57198808f309185';
+        const MULTICHAIN_API_KEY_ETHERSCAN = 'GUKRR1Q9G1XIRDKZSCNN5Y8PFZU5NIBPVI';
+        const ANKR_API_KEY = 'e84b820663654e604aed12d53210af722a5e3f19e6d1af7cd479f9502fa21546';
+
+        const ETH_RPC_URL = `https://mainnet.infura.io/v3/${INFURA_API_KEY}`;
+        const BSC_RPC_URL = `https://rpc.ankr.com/bsc/${ANKR_API_KEY}`;
+        const USDT_CONTRACT_ADDRESS_ETH = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+        const CUSTOM_ERC20_TOKEN_ADDRESS = '0x8433FB60Dc7a4630f62b121d9fbBB416aE2C7d39';
+        const USDT_CONTRACT_ADDRESS_BSC = '0x9f3205171CC1f469954cD28316F8DDb1DBfB9490';
+        const MINIMAL_ERC20_ABI = [{"constant": true, "inputs": [{"name": "_owner", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "balance", "type": "uint256"}], "type": "function"}];
+
+        // --- DOM Elements ---
+        const form = document.getElementById('explorer-form');
+        const addressInput = document.getElementById('wallet-address');
+        const loader = document.getElementById('loader');
+        const errorMessage = document.getElementById('error-message');
+        const resultsDiv = document.getElementById('results');
+        const ethBalanceEl = document.getElementById('eth-balance');
+        const usdtBalanceEl = document.getElementById('usdt-balance');
+        const erc20TokenBalanceEl = document.getElementById('erc20-token-balance');
+        const bep20TokenBalanceEl = document.getElementById('bep20-token-balance');
+        const ethTransactionsTableBody = document.getElementById('eth-transactions-table-body');
+        const bscTransactionsTableBody = document.getElementById('bsc-transactions-table-body');
+
+        let web3Eth, web3Bsc;
+
+        // --- Page Logic ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const address = urlParams.get('address');
+            if (address) {
+                addressInput.value = address;
+                if (!web3Eth) web3Eth = new Web3(ETH_RPC_URL);
+                if (!web3Bsc) web3Bsc = new Web3(BSC_RPC_URL);
+                fetchAllChainData(address);
+            }
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const address = addressInput.value.trim();
+            if (new Web3().utils.isAddress(address)) {
+                window.location.search = `?address=${address}`;
+            } else {
+                showError('Please enter a valid wallet address.');
+            }
+        });
+
+        // --- Data Fetching ---
+        async function fetchAllChainData(address) {
+            showLoader(true);
+            showError(null);
+            resultsDiv.classList.add('hidden');
+            try {
+                const [ethData, bscData, ethTxs, bscTxs, ethTokenTxs, bscTokenTxs] = await Promise.all([
+                    fetchEthereumData(address),
+                    fetchBscData(address),
+                    fetchEthereumTransactions(address),
+                    fetchBscTransactions(address), // Calls our new reliable proxy
+                    fetchEthereumTokenTransactions(address),
+                    fetchBscTokenTransactions(address) // Calls our new reliable proxy
+                ]);
+                displayResults(ethData, bscData);
+                const allEthTxs = [...ethTxs, ...ethTokenTxs].sort((a, b) => b.timeStamp - a.timeStamp);
+                displayChainTransactions(allEthTxs, address, 'ETH', ethTransactionsTableBody);
+                const allBscTxs = [...bscTxs, ...bscTokenTxs].sort((a, b) => b.timeStamp - a.timeStamp);
+                displayChainTransactions(allBscTxs, address, 'BSC', bscTransactionsTableBody);
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                showError('Failed to fetch wallet data. Check console for details.');
+            } finally {
+                showLoader(false);
+            }
+        }
+
+        // --- Ethereum Functions ---
+        async function fetchEthereumData(address) {
+            const ethBalanceWei = await web3Eth.eth.getBalance(address);
+            const ethBalance = web3Eth.utils.fromWei(ethBalanceWei, 'ether');
+            const usdtContract = new web3Eth.eth.Contract(MINIMAL_ERC20_ABI, USDT_CONTRACT_ADDRESS_ETH);
+            const usdtBalanceRaw = await usdtContract.methods.balanceOf(address).call();
+            const usdtBalance = web3Eth.utils.fromWei(usdtBalanceRaw, 'mwei');
+            const erc20TokenContract = new web3Eth.eth.Contract(MINIMAL_ERC20_ABI, CUSTOM_ERC20_TOKEN_ADDRESS);
+            const erc20TokenBalanceRaw = await erc20TokenContract.methods.balanceOf(address).call();
+            const erc20TokenBalance = web3Eth.utils.fromWei(erc20TokenBalanceRaw, 'ether');
+            return { ethBalance, usdtBalance, erc20TokenBalance };
+        }
+        async function fetchEthereumTransactions(address) {
+            const url = `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&page=1&offset=50&sort=desc&apikey=${MULTICHAIN_API_KEY_ETHERSCAN}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.status === "1" ? data.result : [];
+        }
+        async function fetchEthereumTokenTransactions(address) {
+            const url = `https://api.etherscan.io/api?module=account&action=tokentx&address=${address}&page=1&offset=50&sort=desc&apikey=${MULTICHAIN_API_KEY_ETHERSCAN}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.status === "1" ? data.result : [];
+        }
+
+        // --- BSC Functions (Using our own proxy) ---
+        async function fetchBscData(address) {
+            const tokenContract = new web3Bsc.eth.Contract(MINIMAL_ERC20_ABI, USDT_CONTRACT_ADDRESS_BSC);
+            const tokenBalanceRaw = await tokenContract.methods.balanceOf(address).call();
+            return { tokenBalance: web3Bsc.utils.fromWei(tokenBalanceRaw, 'ether') };
+        }
+        async function fetchBscTransactions(address) {
+            const url = `/.netlify/functions/bsc-proxy?action=txlist&address=${address}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.status === "1" ? data.result : [];
+        }
+        async function fetchBscTokenTransactions(address) {
+            const url = `/.netlify/functions/bsc-proxy?action=tokentx&address=${address}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.status === "1" ? data.result : [];
+        }
+
+        // --- Display Functions ---
+        function displayResults(ethData, bscData) {
+            ethBalanceEl.textContent = `${parseFloat(ethData.ethBalance).toFixed(5)} ETH`;
+            usdtBalanceEl.textContent = `${parseFloat(ethData.usdtBalance).toFixed(2)} USDT`;
+            erc20TokenBalanceEl.textContent = `${parseFloat(ethData.erc20TokenBalance).toFixed(4)} Token`;
+            bep20TokenBalanceEl.textContent = `${parseFloat(bscData.tokenBalance).toLocaleString()} USDT`;
+            resultsDiv.classList.remove('hidden');
+        }
+        function displayChainTransactions(transactions, walletAddress, chain, tableBody) {
+            tableBody.innerHTML = '';
+            if (!transactions || transactions.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500 py-4">No recent transactions found.</td></tr>`;
+                return;
+            }
+            const tempWeb3 = new Web3();
+            transactions.slice(0, 10).forEach(tx => {
+                const isOut = tx.from.toLowerCase() === walletAddress.toLowerCase();
+                const direction = isOut ? 'OUT' : 'IN';
+                const directionClass = isOut ? 'text-yellow-400' : 'text-red-400';
+                let valueDisplay;
+                if (tx.tokenSymbol) {
+                    const value = tx.value / (10 ** tx.tokenDecimal);
+                    valueDisplay = `${parseFloat(value).toLocaleString()} ${tx.tokenSymbol}`;
+                } else {
+                    const value = tempWeb3.utils.fromWei(tx.value, 'ether');
+                    valueDisplay = `${parseFloat(value).toFixed(4)} ${chain === 'ETH' ? 'ETH' : 'BNB'}`;
+                }
+                const date = new Date(tx.timeStamp * 1000).toLocaleDateString();
+                const explorerUrl = chain === 'ETH' ? `https://etherscan.io/tx/${tx.hash}` : `https://bscscan.com/tx/${tx.hash}`;
+                const row = `
+                    <tr class="border-b border-gray-800 hover:bg-gray-700/50">
+                        <td class="whitespace-nowrap"><a href="${explorerUrl}" target="_blank" class="text-blue-400 hover:underline">${tx.hash.substring(0, 6)}...${tx.hash.substring(tx.hash.length - 4)}</a></td>
+                        <td><span class="${directionClass}">${direction}</span></td>
+                        <td class="font-mono">${valueDisplay}</td>
+                        <td class="text-gray-400">${date}</td>
+                    </tr>`;
+                tableBody.innerHTML += row;
+            });
+        }
+        function showLoader(isLoading) { loader.classList.toggle('hidden', !isLoading); }
+        function showError(message) {
+            errorMessage.textContent = message || '';
+            errorMessage.classList.toggle('hidden', !message);
+        }
+    </script>
+</body>
+</html>
